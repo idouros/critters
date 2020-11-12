@@ -1,0 +1,1 @@
+python critters.py -t critters_small.config
