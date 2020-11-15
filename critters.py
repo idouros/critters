@@ -200,11 +200,9 @@ def load_dataset(config):
 def predict_class_id(image, nn_params, layers):
 
     logits = forward_propagation(image, nn_params, layers)
-    #sm = tf.nn.softmax(logits)
+    sm = tf.nn.softmax(logits)
     with tf.Session() as sess:
-        #scores = sess.run(sm)
-        scores = sess.run(logits)
-        print(scores)
+        scores = sess.run(sm)
         return np.argmax(scores)
 
 def load_and_preprocess(image_file_name):
