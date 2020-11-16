@@ -1,3 +1,7 @@
+#TODO Migrate to latest Python version, and latest TensorFlow
+#TODO Make it use CUDA
+#TODO Improve the test set accuracy
+
 import os
 import argparse
 import configparser
@@ -81,7 +85,7 @@ def model(X_train, Y_train, X_test, Y_test, layers, learning_rate = 0.0001,
 
     with tf.Session() as sess:
         
-        sess.run(init)
+        sess.run(init) #TODO introduce minibatches to accelerate training
         for iteration in range(num_iters):
             _ , iteration_cost = sess.run([optimizer, cost], feed_dict={X: X_train, Y: Y_train})
 
@@ -125,7 +129,7 @@ def load_dataset(config):
             orientations[row[0]] = row[1]
     
     # Initialize the data placeholders
-    X_in = []
+    X_in = [] #TODO change types so that slicing becomes easier when splitting between train/test sets
     Y_in = []
 
     # Load files and pre-process on the fly
@@ -231,7 +235,7 @@ def main():
     # Optimization loop
     nn_params = model(X_train, Y_train, X_test, Y_test, layers, learning_rate, num_iters)
 
-    # Trying the inference:
+    # Trying the inference: #TODO take this out of here, better user interface
     fnames = ["Data/cat/7.jpeg", "Data/horse/OIP-_6poWqxKgI1r0BVX9xCTaQHaEo.jpeg", "Data/squirrel/OIP-_kiyj8R2JYihtRF0_MURRQHaE8.jpeg", "IMG_20201025_101839.jpg"]
     for fname in fnames:
         test_image = load_and_preprocess(fname)
