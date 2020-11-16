@@ -164,25 +164,22 @@ def load_dataset(config):
     print(str(num_training_set_samples) + " training samples")
     print(str(num_test_set_samples) + " test samples")
 
-    training_set_indices = random.sample(range(0, num_input_samples-1), num_training_set_samples)     
+    shuffled_indices = np.arange(0, num_input_samples)
+    random.shuffle(shuffled_indices)
 
     X_train_orig = np.zeros([num_training_set_samples,IM_SIZE,IM_SIZE,3], dtype=int)
     X_test_orig = np.zeros([num_test_set_samples,IM_SIZE,IM_SIZE,3], dtype=int)
     Y_train_orig = np.zeros([1,num_training_set_samples], dtype=int)
     Y_test_orig = np.zeros([1,num_test_set_samples], dtype=int)
 
-    train_pos = 0
-    test_pos = 0
-    for index in range (0, num_input_samples):
-        if index in training_set_indices:
-            X_train_orig[train_pos] = X_in[index] 
-            Y_train_orig[0,train_pos] = Y_in[index]
-            train_pos += 1
+    for j in range (0, num_input_samples):
+        if j < num_training_set_samples:
+            X_train_orig[j] = X_in[shuffled_indices[j]] 
+            Y_train_orig[0,j] = Y_in[shuffled_indices[j]]
         else:
-            X_test_orig[test_pos] = X_in[index]
-            Y_test_orig[0,test_pos] = Y_in[index]   
-            test_pos += 1        
-    
+            X_test_orig[j-num_training_set_samples] = X_in[shuffled_indices[j]]
+            Y_test_orig[0,j-num_training_set_samples] = Y_in[shuffled_indices[j]]   
+
     # Flatten the training and test images
     X_train_flatten = X_train_orig.reshape(X_train_orig.shape[0], -1).T
     X_test_flatten = X_test_orig.reshape(X_test_orig.shape[0], -1).T
