@@ -133,8 +133,6 @@ def load_dataset(config):
     print("Loading images...")
     for image_class in training_data:
         class_id += 1
-        print(image_class)
-        print(class_id)
         image_directory = os.listdir(data_location + '/' + image_class)
         for image_file in image_directory:
             
@@ -200,10 +198,11 @@ def load_dataset(config):
 def predict_class_id(image, nn_params, layers):
 
     logits = forward_propagation(image, nn_params, layers)
-    sm = tf.nn.softmax(logits)
+    sm = tf.nn.softmax(logits, axis = 0)
     with tf.Session() as sess:
         scores = sess.run(sm)
-        return np.argmax(scores)
+        #print(scores)
+        return np.argmax(scores), np.max(scores)
 
 def load_and_preprocess(image_file_name):
 
@@ -239,8 +238,8 @@ def main():
     fnames = ["Data/cat/7.jpeg", "Data/horse/OIP-_6poWqxKgI1r0BVX9xCTaQHaEo.jpeg", "Data/squirrel/OIP-_kiyj8R2JYihtRF0_MURRQHaE8.jpeg", "IMG_20201025_101839.jpg"]
     for fname in fnames:
         test_image = load_and_preprocess(fname)
-        predicted_class_id = predict_class_id(test_image, nn_params, layers)
-        print("Prediction: " + fname + " is an image depicting: " + class_labels[predicted_class_id])
+        predicted_class_id, confidence = predict_class_id(test_image, nn_params, layers)
+        print("Prediction: {} is an image depicting: {}, with {:2.2f}% confidence".format(fname, class_labels[predicted_class_id], confidence*100.0))
 
 if __name__ == "__main__":
     main()
