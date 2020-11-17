@@ -1,5 +1,3 @@
-#TODO Migrate to latest Python version, and latest TensorFlow
-#TODO Make it use CUDA
 #TODO Improve the test set accuracy
 
 import os
@@ -12,9 +10,6 @@ import numpy as np
 import h5py
 import matplotlib.pyplot as plt
 
-import scipy
-from scipy import ndimage
-
 import PIL
 from PIL import Image
 
@@ -23,36 +18,31 @@ from tensorflow.python.framework import ops
 
 IM_SIZE = 64
 
-def create_placeholders(n_x, n_y):
-    X = tf.placeholder(tf.float32, shape = [n_x, None], name = "X")
-    Y = tf.placeholder(tf.float32, shape = [n_y, None], name = "Y")
-    return X, Y
-
 def initialize_parameters(layers):
    
-    tf.set_random_seed(1)                   
-        
-    parameters = {"W1": tf.get_variable("W1", [layers[0],IM_SIZE*IM_SIZE*3], initializer = tf.contrib.layers.xavier_initializer(seed = 1)),
-                  "b1": tf.get_variable("b1", [layers[0],1], initializer = tf.zeros_initializer())}
+    tf.random.set_seed(1)             
+
+    parameters = [tf.Variable(tf.initializers.GlorotUniform(seed = 1)(shape = (layers[0],IM_SIZE*IM_SIZE*3)), name = "W1"),
+                  tf.Variable(tf.zeros_initializer()(shape = (layers[0],1)), name = "b1")]
 
     for i in range(1, len(layers)):
-        parameters["W"+str(i+1)] = tf.get_variable("W"+str(i+1), [layers[i],layers[i-1]], initializer = tf.contrib.layers.xavier_initializer(seed = 1))
-        parameters["b"+str(i+1)] = tf.get_variable("b"+str(i+1), [layers[i],1], initializer = tf.zeros_initializer())
+        parameters.append(tf.Variable(tf.initializers.GlorotUniform(seed = 1)(shape = (layers[i],layers[i-1])), name = "W"+str(i+1)))
+        parameters.append(tf.Variable(tf.zeros_initializer()(shape = (layers[i],1)), name = "b"+str(i+1)))
 
     return parameters
 
 def forward_propagation(X, parameters, layers):
     
     # Retrieve the parameters from the dictionary
-    W = parameters['W1']
-    b = parameters['b1']
+    W = parameters[0]
+    b = parameters[1]
     A = X
 
     for i in range(1, len(layers)):
         Z = tf.add(tf.matmul(W, A), b)   
         A = tf.nn.relu(Z)
-        W = parameters["W"+str(i+1)]
-        b = parameters["b"+str(i+1)]
+        W = parameters[(i*2)]
+        b = parameters[(i*2)+1]
 
     Z_final = tf.add(tf.matmul(W, A), b)
     # (no activation for the final layer, will do softmax later on)
@@ -70,38 +60,26 @@ def model(X_train, Y_train, X_test, Y_test, layers, learning_rate = 0.0001,
           num_iters = 1500, print_cost = True):
     
     ops.reset_default_graph()                         # to be able to rerun the model without overwriting tf variables
-    tf.set_random_seed(1)                             # to keep consistent results
-    seed = 3                                          # to keep consistent results
-    (n_x, m) = X_train.shape                          # (n_x: input size, m : number of examples in the train set)
-    n_y = Y_train.shape[0]                            # n_y : output size
-    costs = []                                        # To keep track of the cost
-    
-    X, Y = create_placeholders(n_x, n_y)
+    tf.random.set_seed(1)                             # to keep consistent results
     parameters = initialize_parameters(layers)
-    Z_final = forward_propagation(X, parameters, layers)
-    cost = compute_cost(Z_final, Y)
-    optimizer = tf.train.AdamOptimizer(learning_rate = learning_rate).minimize(cost)
-    init = tf.global_variables_initializer()
-
-    with tf.Session() as sess:
+    optimizer = tf.optimizers.Adam(learning_rate = learning_rate)
+    for iteration in range(num_iters):
         
-        sess.run(init) #TODO introduce minibatches to accelerate training
-        for iteration in range(num_iters):
-            _ , iteration_cost = sess.run([optimizer, cost], feed_dict={X: X_train, Y: Y_train})
+        with tf.GradientTape() as t:
+            Z_final = forward_propagation(X_train, parameters, layers)
+            current_cost = compute_cost(Z_final, Y_train)
+        grads = t.gradient(current_cost, parameters)
 
-            # Print the cost every iteration
-            if print_cost == True and iteration % 100 == 0:
-                print ("Cost after iteration %i: %f" % (iteration, iteration_cost))
+        optimizer.apply_gradients(zip(grads, parameters))
+        if print_cost == True and iteration % 100 == 0:
+            print ("Cost after iteration %i: %f" % (iteration, current_cost.numpy()))
+    print ("Network training complete.")
 
-        parameters = sess.run(parameters)
-        print ("Network training complete.")
+    # Calculate accuracy
+    print ("Train Accuracy:", tf.reduce_mean(tf.cast(tf.equal(tf.argmax(Z_final), tf.argmax(Y_train)), "float")).numpy())
 
-        # Calculate accuracy
-        correct_prediction = tf.equal(tf.argmax(Z_final), tf.argmax(Y))
-
-        accuracy = tf.reduce_mean(tf.cast(correct_prediction, "float"))
-        print ("Train Accuracy:", accuracy.eval({X: X_train, Y: Y_train}))
-        print ("Test Accuracy:", accuracy.eval({X: X_test, Y: Y_test}))
+    Z_test = forward_propagation(X_test, parameters, layers)
+    print ("Test Accuracy:", tf.reduce_mean(tf.cast(tf.equal(tf.argmax(Z_test), tf.argmax(Y_test)), "float")).numpy())
         
     return parameters
 
@@ -141,10 +119,10 @@ def load_dataset(config):
         for image_file in image_directory:
             
             # Read
-            image = np.array(ndimage.imread(data_location + '/' + image_class + '/' + image_file, flatten = False))
+            image = np.array(plt.imread(data_location + '/' + image_class + '/' + image_file))
 
             # Resize to a standard size
-            image_resized = scipy.misc.imresize(image, size=(IM_SIZE,IM_SIZE))
+            image_resized = np.array(Image.fromarray(image).resize(size=(IM_SIZE,IM_SIZE)))
 
             # Rotate according to specified orientation
             orientation = int(orientations[image_class + '/' + image_file])
@@ -199,16 +177,13 @@ def load_dataset(config):
 def predict_class_id(image, nn_params, layers):
 
     logits = forward_propagation(image, nn_params, layers)
-    sm = tf.nn.softmax(logits, axis = 0)
-    with tf.Session() as sess:
-        scores = sess.run(sm)
-        #print(scores)
-        return np.argmax(scores), np.max(scores)
+    scores = tf.nn.softmax(logits, axis = 0)
+    return np.argmax(scores), np.max(scores)
 
 def load_and_preprocess(image_file_name):
 
-    image = np.array(ndimage.imread(image_file_name, flatten=False))
-    image_resized = scipy.misc.imresize(image, size=(IM_SIZE,IM_SIZE))
+    image = np.array(plt.imread(image_file_name))
+    image_resized = np.array(Image.fromarray(image).resize(size=(IM_SIZE,IM_SIZE)))
     image_norm = image_resized/255.0
     image_flattened = image_norm.reshape(1, IM_SIZE*IM_SIZE*3).T
     return image_flattened.astype(np.float32)
@@ -226,8 +201,9 @@ def main():
     X_train, Y_train, X_test, Y_test, classes = load_dataset(config)
     
     hidden_layers = config['architecture']['hidden_layers'].split(',')
-    layers = hidden_layers
+    layers = list(map(int, hidden_layers))
     layers.append(len(classes))
+
     print("Model will be trained with " + str(len(layers)) + " layers.")    
     learning_rate = float(config['hyperparameters']['learning_rate'])
     num_iters = int(config['hyperparameters']['num_iters'])
