@@ -5,6 +5,7 @@ import argparse
 import configparser
 import csv
 import random
+import math
 
 import numpy as np
 import h5py
@@ -16,7 +17,7 @@ from PIL import Image
 import tensorflow as tf
 from tensorflow.python.framework import ops
 
-IM_SIZE = 64
+IM_SIZE = 64 #TODO make configurable 
 
 def initialize_parameters(layers):
    
@@ -49,11 +50,13 @@ def forward_propagation(X, parameters, layers):
    
     return Z_final
 
-def compute_cost(Z_final, Y):
+def compute_cost(Z_final, Y, parameters, lamda = 0):
 
     logits = tf.transpose(Z_final)
     labels = tf.transpose(Y)
-    cost = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits = logits, labels = labels))
+    cost = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits = logits, labels = labels)) 
+    for i in range(0, math.floor(len(parameters)/2)):
+        cost += lamda * tf.nn.l2_loss(parameters[i*2])
     return cost
 
 def model(X_train, Y_train, X_test, Y_test, layers, learning_rate = 0.0001,
@@ -67,7 +70,7 @@ def model(X_train, Y_train, X_test, Y_test, layers, learning_rate = 0.0001,
         
         with tf.GradientTape() as t:
             Z_final = forward_propagation(X_train, parameters, layers)
-            current_cost = compute_cost(Z_final, Y_train)
+            current_cost = compute_cost(Z_final, Y_train, parameters, 0.7)
         grads = t.gradient(current_cost, parameters)
 
         optimizer.apply_gradients(zip(grads, parameters))
@@ -139,8 +142,7 @@ def load_dataset(config):
     print("Loaded " + str(num_input_samples) + " images.")
 
     # Shuffle and split into training and test set
-    training_set_indices = []
-    r = 0.8 #training_set_ratio
+    r = 0.8 #training_set_ratio #TODO make configurable
     num_training_set_samples = int(round(num_input_samples * r))
     num_test_set_samples = num_input_samples - num_training_set_samples
     print(str(num_training_set_samples) + " training samples")
