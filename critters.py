@@ -17,13 +17,13 @@ from PIL import Image
 import tensorflow as tf
 from tensorflow.python.framework import ops
 
-IM_SIZE = 64 #TODO make configurable 
 
-def initialize_parameters(layers):
+
+def initialize_parameters(layers, sample_size):
    
     tf.random.set_seed(1)             
 
-    parameters = [tf.Variable(tf.initializers.GlorotUniform(seed = 1)(shape = (layers[0],IM_SIZE*IM_SIZE*3)), name = "W1"),
+    parameters = [tf.Variable(tf.initializers.GlorotUniform(seed = 1)(shape = (layers[0],sample_size*sample_size*3)), name = "W1"),
                   tf.Variable(tf.zeros_initializer()(shape = (layers[0],1)), name = "b1")]
 
     for i in range(1, len(layers)):
@@ -50,27 +50,26 @@ def forward_propagation(X, parameters, layers):
    
     return Z_final
 
-def compute_cost(Z_final, Y, parameters, lamda = 0):
+def compute_cost(Z_final, Y, parameters, l2_reg = 0):
 
     logits = tf.transpose(Z_final)
     labels = tf.transpose(Y)
     cost = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits = logits, labels = labels)) 
     for i in range(0, math.floor(len(parameters)/2)):
-        cost += lamda * tf.nn.l2_loss(parameters[i*2])
+        cost += l2_reg * tf.nn.l2_loss(parameters[i*2])
     return cost
 
-def model(X_train, Y_train, X_test, Y_test, layers, learning_rate = 0.0001,
-          num_iters = 1500, print_cost = True):
+def train_model(X_train, Y_train, X_test, Y_test, layers, learning_rate, num_iters, sample_size, l2_reg, print_cost = True):
     
     ops.reset_default_graph()                         # to be able to rerun the model without overwriting tf variables
     tf.random.set_seed(1)                             # to keep consistent results
-    parameters = initialize_parameters(layers)
+    parameters = initialize_parameters(layers, sample_size)
     optimizer = tf.optimizers.Adam(learning_rate = learning_rate)
     for iteration in range(num_iters):
         
         with tf.GradientTape() as t:
             Z_final = forward_propagation(X_train, parameters, layers)
-            current_cost = compute_cost(Z_final, Y_train, parameters, 0.7)
+            current_cost = compute_cost(Z_final, Y_train, parameters, l2_reg)
         grads = t.gradient(current_cost, parameters)
 
         optimizer.apply_gradients(zip(grads, parameters))
@@ -92,7 +91,7 @@ def convert_to_one_hot(labels, C):
     one_hot[np.arange(labels.size),labels] = 1
     return one_hot.transpose()
 
-def load_dataset(config):
+def load_dataset(config, sample_size, split_ratio):
 
     data_location = config['training_data']['location']
     training_data = config['training_data']['classes'].split(',')
@@ -125,7 +124,7 @@ def load_dataset(config):
             image = np.array(plt.imread(data_location + '/' + image_class + '/' + image_file))
 
             # Resize to a standard size
-            image_resized = np.array(Image.fromarray(image).resize(size=(IM_SIZE,IM_SIZE)))
+            image_resized = np.array(Image.fromarray(image).resize(size=(sample_size, sample_size)))
 
             # Rotate according to specified orientation
             orientation = int(orientations[image_class + '/' + image_file])
@@ -142,8 +141,7 @@ def load_dataset(config):
     print("Loaded " + str(num_input_samples) + " images.")
 
     # Shuffle and split into training and test set
-    r = 0.8 #training_set_ratio #TODO make configurable
-    num_training_set_samples = int(round(num_input_samples * r))
+    num_training_set_samples = int(round(num_input_samples * split_ratio))
     num_test_set_samples = num_input_samples - num_training_set_samples
     print(str(num_training_set_samples) + " training samples")
     print(str(num_test_set_samples) + " test samples")
@@ -151,10 +149,10 @@ def load_dataset(config):
     shuffled_indices = np.arange(0, num_input_samples)
     random.shuffle(shuffled_indices)
 
-    X_train_orig = np.zeros([num_training_set_samples,IM_SIZE,IM_SIZE,3], dtype=int)
-    X_test_orig = np.zeros([num_test_set_samples,IM_SIZE,IM_SIZE,3], dtype=int)
-    Y_train_orig = np.zeros([1,num_training_set_samples], dtype=int)
-    Y_test_orig = np.zeros([1,num_test_set_samples], dtype=int)
+    X_train_orig = np.zeros([num_training_set_samples, sample_size, sample_size,3], dtype=int)
+    X_test_orig = np.zeros([num_test_set_samples, sample_size, sample_size, 3], dtype=int)
+    Y_train_orig = np.zeros([1, num_training_set_samples], dtype=int)
+    Y_test_orig = np.zeros([1 ,num_test_set_samples], dtype=int)
 
     for j in range (0, num_input_samples):
         if j < num_training_set_samples:
@@ -182,41 +180,46 @@ def predict_class_id(image, nn_params, layers):
     scores = tf.nn.softmax(logits, axis = 0)
     return np.argmax(scores), np.max(scores)
 
-def load_and_preprocess(image_file_name):
+def load_and_preprocess(image_file_name, sample_size):
 
     image = np.array(plt.imread(image_file_name))
-    image_resized = np.array(Image.fromarray(image).resize(size=(IM_SIZE,IM_SIZE)))
+    image_resized = np.array(Image.fromarray(image).resize(size=(sample_size, sample_size)))
     image_norm = image_resized/255.0
-    image_flattened = image_norm.reshape(1, IM_SIZE*IM_SIZE*3).T
+    image_flattened = image_norm.reshape(1, sample_size*sample_size*3).T
     return image_flattened.astype(np.float32)
 
 def main():
-
+    
     parser = argparse.ArgumentParser()
     parser.add_argument('-t', '--train',   dest='config_file',          help='Load the specified config file and train the NN')
     args = parser.parse_args()
 
+    # Data loading
     config = configparser.ConfigParser()
     config.read(args.config_file)
+    sample_size = config.getint('hyperparameters', 'sample_size', fallback = '64') 
+    split_ratio = config.getfloat('training_data', 'split_ratio', fallback = '0.8') 
+    X_train, Y_train, X_test, Y_test, classes = load_dataset(config, sample_size, split_ratio)
+
+    # Mandatory
     class_labels=config['training_data']['classes'].split(',')
-    
-    X_train, Y_train, X_test, Y_test, classes = load_dataset(config)
-    
     hidden_layers = config['architecture']['hidden_layers'].split(',')
     layers = list(map(int, hidden_layers))
     layers.append(len(classes))
-
     print("Model will be trained with " + str(len(layers)) + " layers.")    
-    learning_rate = float(config['hyperparameters']['learning_rate'])
-    num_iters = int(config['hyperparameters']['num_iters'])
 
-    # Optimization loop
-    nn_params = model(X_train, Y_train, X_test, Y_test, layers, learning_rate, num_iters)
+    # Optional
+    learning_rate = config.getfloat('hyperparameters', 'learning_rate', fallback = '0.001')
+    num_iters = config.getint('hyperparameters', 'num_iters', fallback = '1500')
+    l2_reg = config.getfloat('hyperparameters', 'l2_reg', fallback = '0.0')
+
+    # Training the NN
+    nn_params = train_model(X_train, Y_train, X_test, Y_test, layers, learning_rate, num_iters, sample_size, l2_reg)
 
     # Trying the inference: #TODO take this out of here, better user interface
     fnames = ["Data/cat/7.jpeg", "Data/horse/OIP-_6poWqxKgI1r0BVX9xCTaQHaEo.jpeg", "Data/squirrel/OIP-_kiyj8R2JYihtRF0_MURRQHaE8.jpeg", "IMG_20201025_101839.jpg"]
     for fname in fnames:
-        test_image = load_and_preprocess(fname)
+        test_image = load_and_preprocess(fname, sample_size)
         predicted_class_id, confidence = predict_class_id(test_image, nn_params, layers)
         print("Prediction: {} is an image depicting: {}, with {:2.2f}% confidence".format(fname, class_labels[predicted_class_id], confidence*100.0))
 
