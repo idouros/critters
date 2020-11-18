@@ -1,5 +1,3 @@
-#TODO Improve the test set accuracy
-
 import os
 import argparse
 import configparser
@@ -8,7 +6,6 @@ import random
 import math
 
 import numpy as np
-import h5py
 import matplotlib.pyplot as plt
 
 import PIL
@@ -16,8 +13,6 @@ from PIL import Image
 
 import tensorflow as tf
 from tensorflow.python.framework import ops
-
-
 
 def initialize_parameters(layers, sample_size):
    
