@@ -69,14 +69,19 @@ def train_model(X_train, Y_train, X_test, Y_test, layers, learning_rate, num_ite
 
         optimizer.apply_gradients(zip(grads, parameters))
         if print_cost == True and iteration % 100 == 0:
+            print("__________________________________________________________")
             print ("Cost after iteration %i: %f" % (iteration, current_cost.numpy()))
+            Z_test = forward_propagation(X_test, parameters, layers)
+            print ("Train Accuracy:", tf.reduce_mean(tf.cast(tf.equal(tf.argmax(Z_final), tf.argmax(Y_train)), "float")).numpy())
+            print ("Test Accuracy:", tf.reduce_mean(tf.cast(tf.equal(tf.argmax(Z_test), tf.argmax(Y_test)), "float")).numpy())
+    
     print ("Network training complete.")
 
     # Calculate accuracy
-    print ("Train Accuracy:", tf.reduce_mean(tf.cast(tf.equal(tf.argmax(Z_final), tf.argmax(Y_train)), "float")).numpy())
+    #print ("Train Accuracy:", tf.reduce_mean(tf.cast(tf.equal(tf.argmax(Z_final), tf.argmax(Y_train)), "float")).numpy())
 
-    Z_test = forward_propagation(X_test, parameters, layers)
-    print ("Test Accuracy:", tf.reduce_mean(tf.cast(tf.equal(tf.argmax(Z_test), tf.argmax(Y_test)), "float")).numpy())
+    #Z_test = forward_propagation(X_test, parameters, layers)
+    #print ("Test Accuracy:", tf.reduce_mean(tf.cast(tf.equal(tf.argmax(Z_test), tf.argmax(Y_test)), "float")).numpy())
         
     return parameters
 
@@ -192,7 +197,7 @@ def main():
     # Data loading
     config = configparser.ConfigParser()
     config.read(args.config_file)
-    sample_size = config.getint('hyperparameters', 'sample_size', fallback = '64') 
+    sample_size = config.getint('architecture', 'sample_size', fallback = '64') 
     split_ratio = config.getfloat('training_data', 'split_ratio', fallback = '0.8') 
     X_train, Y_train, X_test, Y_test, classes = load_dataset(config, sample_size, split_ratio)
 
@@ -201,7 +206,9 @@ def main():
     hidden_layers = config['architecture']['hidden_layers'].split(',')
     layers = list(map(int, hidden_layers))
     layers.append(len(classes))
-    print("Model will be trained with " + str(len(layers)) + " layers.")    
+    print("Model will be trained with " + str(len(layers)) + " layers:")
+    print(layers)
+    print("Sample size: " + str(sample_size))
 
     # Optional
     learning_rate = config.getfloat('hyperparameters', 'learning_rate', fallback = '0.001')
