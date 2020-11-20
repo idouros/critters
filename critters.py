@@ -1,4 +1,6 @@
 import os
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2' 
+
 import argparse
 import configparser
 import csv
@@ -189,7 +191,7 @@ def load_and_preprocess(image_file_name, sample_size):
     return image_flattened.astype(np.float32)
 
 def main():
-    
+
     parser = argparse.ArgumentParser()
     parser.add_argument('-t', '--train',   dest='config_file',          help='Load the specified config file and train the NN')
     args = parser.parse_args()
