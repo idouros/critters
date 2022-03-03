@@ -1,96 +1,19 @@
-#TODO Keras, dropout, minibatches, tensorboard
-
 import os
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2' 
 
 import argparse
 import configparser
 import csv
 import random
-import math
 
 import numpy as np
 import matplotlib.pyplot as plt
-
-import PIL
 from PIL import Image
-
 import tensorflow as tf
-from tensorflow.python.framework import ops
 
-def initialize_parameters(layers, sample_size):
-   
-    tf.random.set_seed(1)             
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
-    parameters = [tf.Variable(tf.initializers.GlorotUniform(seed = 1)(shape = (layers[0],sample_size*sample_size*3)), name = "W1"),
-                  tf.Variable(tf.zeros_initializer()(shape = (layers[0],1)), name = "b1")]
+def convert_to_one_hot(labels):
 
-    for i in range(1, len(layers)):
-        parameters.append(tf.Variable(tf.initializers.GlorotUniform(seed = 1)(shape = (layers[i],layers[i-1])), name = "W"+str(i+1)))
-        parameters.append(tf.Variable(tf.zeros_initializer()(shape = (layers[i],1)), name = "b"+str(i+1)))
-
-    return parameters
-
-def forward_propagation(X, parameters, layers):
-    
-    # Retrieve the parameters from the dictionary
-    W = parameters[0]
-    b = parameters[1]
-    A = X
-
-    for i in range(1, len(layers)):
-        Z = tf.add(tf.matmul(W, A), b)   
-        A = tf.nn.relu(Z)
-        W = parameters[(i*2)]
-        b = parameters[(i*2)+1]
-
-    Z_final = tf.add(tf.matmul(W, A), b)
-    # (no activation for the final layer, will do softmax later on)
-   
-    return Z_final
-
-def compute_cost(Z_final, Y, parameters, l2_reg = 0):
-
-    logits = tf.transpose(Z_final)
-    labels = tf.transpose(Y)
-    cost = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits = logits, labels = labels)) 
-    for i in range(0, math.floor(len(parameters)/2)):
-        cost += l2_reg * tf.nn.l2_loss(parameters[i*2])
-    return cost
-
-def train_model(X_train, Y_train, X_test, Y_test, layers, learning_rate, num_iters, sample_size, l2_reg, print_cost = True):
-    
-    ops.reset_default_graph()                         # to be able to rerun the model without overwriting tf variables
-    tf.random.set_seed(1)                             # to keep consistent results
-    parameters = initialize_parameters(layers, sample_size)
-    optimizer = tf.optimizers.Adam(learning_rate = learning_rate)
-    for iteration in range(num_iters):
-        
-        with tf.GradientTape() as t:
-            Z_final = forward_propagation(X_train, parameters, layers)
-            current_cost = compute_cost(Z_final, Y_train, parameters, l2_reg)
-        grads = t.gradient(current_cost, parameters)
-
-        optimizer.apply_gradients(zip(grads, parameters))
-        if print_cost == True and iteration % 100 == 0:
-            print("__________________________________________________________")
-            print ("Cost after iteration %i: %f" % (iteration, current_cost.numpy()))
-            Z_test = forward_propagation(X_test, parameters, layers)
-            print ("Train Accuracy:", tf.reduce_mean(tf.cast(tf.equal(tf.argmax(Z_final), tf.argmax(Y_train)), "float")).numpy())
-            print ("Test Accuracy:", tf.reduce_mean(tf.cast(tf.equal(tf.argmax(Z_test), tf.argmax(Y_test)), "float")).numpy())
-    
-    print ("Network training complete.")
-
-    # Calculate accuracy
-    #print ("Train Accuracy:", tf.reduce_mean(tf.cast(tf.equal(tf.argmax(Z_final), tf.argmax(Y_train)), "float")).numpy())
-
-    #Z_test = forward_propagation(X_test, parameters, layers)
-    #print ("Test Accuracy:", tf.reduce_mean(tf.cast(tf.equal(tf.argmax(Z_test), tf.argmax(Y_test)), "float")).numpy())
-        
-    return parameters
-
-def convert_to_one_hot(labels, C):
-   
     one_hot = np.zeros((labels.size, labels.max()+1))
     one_hot[np.arange(labels.size),labels] = 1
     return one_hot.transpose()
@@ -123,7 +46,7 @@ def load_dataset(config, sample_size, split_ratio):
         class_id += 1
         image_directory = os.listdir(data_location + '/' + image_class)
         for image_file in image_directory:
-            
+
             # Read
             image = np.array(plt.imread(data_location + '/' + image_class + '/' + image_file))
 
@@ -166,23 +89,14 @@ def load_dataset(config, sample_size, split_ratio):
             X_test_orig[j-num_training_set_samples] = X_in[shuffled_indices[j]]
             Y_test_orig[0,j-num_training_set_samples] = Y_in[shuffled_indices[j]]   
 
-    # Flatten the training and test images
-    X_train_flatten = X_train_orig.reshape(X_train_orig.shape[0], -1).T
-    X_test_flatten = X_test_orig.reshape(X_test_orig.shape[0], -1).T
     # Normalize image vectors
-    X_train = X_train_flatten/255.
-    X_test = X_test_flatten/255.
+    X_train = X_train_orig/255.
+    X_test = X_test_orig/255.
     # Convert training and test labels to one hot matrices
-    Y_train = convert_to_one_hot(Y_train_orig, num_classes)
-    Y_test = convert_to_one_hot(Y_test_orig, num_classes)
+    Y_train = convert_to_one_hot(Y_train_orig)
+    Y_test = convert_to_one_hot(Y_test_orig)
 
     return X_train, Y_train, X_test, Y_test, classes
-
-def predict_class_id(image, nn_params, layers):
-
-    logits = forward_propagation(image, nn_params, layers)
-    scores = tf.nn.softmax(logits, axis = 0)
-    return np.argmax(scores), np.max(scores)
 
 def load_and_preprocess(image_file_name, sample_size):
 
@@ -195,7 +109,7 @@ def load_and_preprocess(image_file_name, sample_size):
 def main():
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('-t', '--train',   dest='config_file',          help='Load the specified config file and train the NN')
+    parser.add_argument('-t', '--train', dest='config_file',  help='Load the specified config file and train the NN')
     args = parser.parse_args()
 
     # Data loading
@@ -205,29 +119,17 @@ def main():
     split_ratio = config.getfloat('training_data', 'split_ratio', fallback = '0.8') 
     X_train, Y_train, X_test, Y_test, classes = load_dataset(config, sample_size, split_ratio)
 
-    # Mandatory
-    class_labels=config['training_data']['classes'].split(',')
-    hidden_layers = config['architecture']['hidden_layers'].split(',')
-    layers = list(map(int, hidden_layers))
-    layers.append(len(classes))
-    print("Model will be trained with " + str(len(layers)) + " layers:")
-    print(layers)
-    print("Sample size: " + str(sample_size))
 
-    # Optional
-    learning_rate = config.getfloat('hyperparameters', 'learning_rate', fallback = '0.001')
-    num_iters = config.getint('hyperparameters', 'num_iters', fallback = '1500')
-    l2_reg = config.getfloat('hyperparameters', 'l2_reg', fallback = '0.0')
+    #TODO Keras
 
-    # Training the NN
-    nn_params = train_model(X_train, Y_train, X_test, Y_test, layers, learning_rate, num_iters, sample_size, l2_reg)
+
 
     # Trying the inference: #TODO take this out of here, better user interface
     fnames = ["Data/cat/7.jpeg", "Data/horse/OIP-_6poWqxKgI1r0BVX9xCTaQHaEo.jpeg", "Data/squirrel/OIP-_kiyj8R2JYihtRF0_MURRQHaE8.jpeg", "IMG_20201025_101839.jpg"]
     for fname in fnames:
         test_image = load_and_preprocess(fname, sample_size)
-        predicted_class_id, confidence = predict_class_id(test_image, nn_params, layers)
-        print("Prediction: {} is an image depicting: {}, with {:2.2f}% confidence".format(fname, class_labels[predicted_class_id], confidence*100.0))
+        #predicted_class_id, confidence = predict_class_id(test_image, nn_params, layers)
+        #print("Prediction: {} is an image depicting: {}, with {:2.2f}% confidence".format(fname, class_labels[predicted_class_id], confidence*100.0))
 
 if __name__ == "__main__":
     main()
