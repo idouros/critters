@@ -12,12 +12,6 @@ import tensorflow as tf
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
-def convert_to_one_hot(labels):
-
-    one_hot = np.zeros((labels.size, labels.max()+1))
-    one_hot[np.arange(labels.size),labels] = 1
-    return one_hot.transpose()
-
 def load_dataset(config, sample_size, split_ratio):
 
     data_location = config['training_data']['location']
@@ -36,7 +30,7 @@ def load_dataset(config, sample_size, split_ratio):
             orientations[row[0]] = row[1]
     
     # Initialize the data placeholders
-    X_in = [] #TODO change types so that slicing becomes easier when splitting between train/test sets
+    X_in = []
     Y_in = []
 
     # Load files and pre-process on the fly
@@ -76,25 +70,18 @@ def load_dataset(config, sample_size, split_ratio):
     shuffled_indices = np.arange(0, num_input_samples)
     random.shuffle(shuffled_indices)
 
-    X_train_orig = np.zeros([num_training_set_samples, sample_size, sample_size,3], dtype=int)
-    X_test_orig = np.zeros([num_test_set_samples, sample_size, sample_size, 3], dtype=int)
-    Y_train_orig = np.zeros([1, num_training_set_samples], dtype=int)
-    Y_test_orig = np.zeros([1 ,num_test_set_samples], dtype=int)
+    X_train = np.zeros([num_training_set_samples, sample_size, sample_size,3], dtype=int)
+    X_test = np.zeros([num_test_set_samples, sample_size, sample_size, 3], dtype=int)
+    Y_train = np.zeros([num_training_set_samples, 1], dtype=int)
+    Y_test = np.zeros([num_test_set_samples, 1], dtype=int)
 
     for j in range (0, num_input_samples):
         if j < num_training_set_samples:
-            X_train_orig[j] = X_in[shuffled_indices[j]] 
-            Y_train_orig[0,j] = Y_in[shuffled_indices[j]]
+            X_train[j] = X_in[shuffled_indices[j]]/255.
+            Y_train[j,0] = Y_in[shuffled_indices[j]]
         else:
-            X_test_orig[j-num_training_set_samples] = X_in[shuffled_indices[j]]
-            Y_test_orig[0,j-num_training_set_samples] = Y_in[shuffled_indices[j]]   
-
-    # Normalize image vectors
-    X_train = X_train_orig/255.
-    X_test = X_test_orig/255.
-    # Convert training and test labels to one hot matrices
-    Y_train = convert_to_one_hot(Y_train_orig)
-    Y_test = convert_to_one_hot(Y_test_orig)
+            X_test[j-num_training_set_samples] = X_in[shuffled_indices[j]]/255.
+            Y_test[j-num_training_set_samples,0] = Y_in[shuffled_indices[j]]
 
     return X_train, Y_train, X_test, Y_test, classes
 
@@ -103,11 +90,11 @@ def load_and_preprocess(image_file_name, sample_size):
     image = np.array(plt.imread(image_file_name))
     image_resized = np.array(Image.fromarray(image).resize(size=(sample_size, sample_size)))
     image_norm = image_resized/255.0
-    image_flattened = image_norm.reshape(1, sample_size*sample_size*3).T
-    return image_flattened.astype(np.float32)
+    return image_norm.astype(np.float32)
 
 def main():
 
+    print("TensorFlow version:", tf.__version__)
     parser = argparse.ArgumentParser()
     parser.add_argument('-t', '--train', dest='config_file',  help='Load the specified config file and train the NN')
     args = parser.parse_args()
@@ -115,14 +102,32 @@ def main():
     # Data loading
     config = configparser.ConfigParser()
     config.read(args.config_file)
-    sample_size = config.getint('architecture', 'sample_size', fallback = '64') 
+    sample_size = config.getint('training_data', 'sample_size', fallback = '64') 
     split_ratio = config.getfloat('training_data', 'split_ratio', fallback = '0.8') 
     X_train, Y_train, X_test, Y_test, classes = load_dataset(config, sample_size, split_ratio)
 
+    print(X_train.shape)
+    print(Y_train.shape)
+    print(X_test.shape)
+    print(Y_test.shape)
+    print(classes)
 
-    #TODO Keras
+    model = tf.keras.models.Sequential([
+        tf.keras.layers.Flatten(input_shape=(sample_size, sample_size, 3)),
+        tf.keras.layers.Dense(128, activation='relu'),
+        tf.keras.layers.Dropout(0.2),
+        tf.keras.layers.Dense(10)
+    ])
 
-
+    predictions = model(X_train[:1]).numpy()
+    loss_fn = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True)
+    model.compile(
+        optimizer='adam',
+        loss=loss_fn,
+        metrics=['accuracy']
+        )
+    model.fit(X_train, Y_train, epochs=5)
+    model.evaluate(X_test,  Y_test, verbose=2)
 
     # Trying the inference: #TODO take this out of here, better user interface
     fnames = ["Data/cat/7.jpeg", "Data/horse/OIP-_6poWqxKgI1r0BVX9xCTaQHaEo.jpeg", "Data/squirrel/OIP-_kiyj8R2JYihtRF0_MURRQHaE8.jpeg", "IMG_20201025_101839.jpg"]
