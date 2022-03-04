@@ -90,7 +90,7 @@ def main():
     config.read(args.config_file)
     sample_size = config.getint('training_data', 'sample_size', fallback = '64')
     split_ratio = config.getfloat('training_data', 'split_ratio', fallback = '0.8')
-    class_labels = config.get('training_data', 'classes')
+    class_labels = config.get('training_data', 'classes').split(",")
     X_train, Y_train, X_test, Y_test, classes = load_dataset(config, sample_size, split_ratio)
 
     model = tf.keras.models.Sequential([
@@ -139,8 +139,8 @@ def main():
         predicted_class_id = np.argmax(predictions)
         print(predictions)
         print("Prediction: {} is an image depicting: {}, with {:2.2f}% confidence".format(
-            fname, 
-            class_labels[predicted_class_id], 
+            fname,
+            class_labels[predicted_class_id],
             confidence*100.0
             ))
 
