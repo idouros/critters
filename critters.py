@@ -11,10 +11,12 @@ import tensorflow as tf
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
-def load_dataset(config, sample_size, split_ratio):
+def load_dataset(config):
     """load"""
     data_location = config['training_data']['location_aligned']
     training_data = config['training_data']['classes'].split(',')
+    split_ratio = float(config['training_data']['split_ratio'])
+    sample_size = int(config['architecture']['sample_size'])
 
     # Initialize the data placeholders
     num_samples_train = [0] * len(training_data)
@@ -26,7 +28,7 @@ def load_dataset(config, sample_size, split_ratio):
 
     # Load files and pre-process on the fly
     class_id = -1
-    print("Loading images...")
+    print(f"Loading images and converting to {sample_size}x{sample_size} grayscale...")
     for image_class in training_data:
         class_id += 1
         image_directory = os.listdir(data_location + '/' + image_class)
@@ -40,32 +42,30 @@ def load_dataset(config, sample_size, split_ratio):
             # Read
             image = np.array(plt.imread(data_location + '/' + image_class + '/' + image_file))
 
-            # Resize to a standard size
+            # Resize to a standard size and convert to greyscate
             image_resized = np.array(Image.fromarray(image).resize(size=(sample_size, sample_size)))
+            image_greyscale = image_resized.dot([0.07, 0.72, 0.21])
 
             # Add to the correct set
             image_id += 1
             if image_id < num_samples_train[class_id]:
-                x_train.append(image_resized/255.0)
+                x_train.append(image_greyscale/255.0)
                 y_train.append(class_id)
             else:
-                x_test.append(image_resized/255.0)
+                x_test.append(image_greyscale/255.0)
                 y_test.append(class_id)
 
-    print("Training samples:")
-    print(num_samples_train)
-    print("Test samples:")
-    print(num_samples_test)
-    print("Total samples: " + str(sum(num_samples_train)+sum(num_samples_test)))
+        print(f"{image_class} images: {num_samples_train[class_id]} train, {num_samples_test[class_id]} test")
 
-    print(y_train[:5])
+    print(f"total images: {len(x_train)} train, {len(x_test)} test")
     return np.array(x_train), np.array(y_train), np.array(x_test), np.array(y_test)
 
 def load_and_preprocess(image_file_name, sample_size):
     """ load and preprocess"""
     image = np.array(plt.imread(image_file_name))
     image_resized = np.array(Image.fromarray(image).resize(size=(sample_size, sample_size)))
-    image_norm = image_resized/255.0
+    image_greyscale = image_resized.dot([0.07, 0.72, 0.21])
+    image_norm = image_greyscale/255.0
     return image_norm
 
 def main():
@@ -78,38 +78,31 @@ def main():
     # Data loading
     config = configparser.ConfigParser()
     config.read(args.config_file)
-    sample_size = config.getint('training_data', 'sample_size', fallback = '64')
-    split_ratio = config.getfloat('training_data', 'split_ratio', fallback = '0.8')
-    class_labels = config.get('training_data', 'classes').split(",")
-    x_train, y_train, x_test, y_test = load_dataset(config, sample_size, split_ratio)
+    x_train, y_train, x_test, y_test = load_dataset(config)
 
+    sample_size = config.getint('architecture', 'sample_size', fallback = '64')
+    class_labels = config.get('training_data', 'classes').split(",")
     model = tf.keras.models.Sequential([
-        tf.keras.layers.Flatten(input_shape=(sample_size, sample_size, 3)),
-        #tf.keras.layers.Dense(2048, activation='relu'),
-        #tf.keras.layers.Dropout(0.4),
-        #tf.keras.layers.Dense(1024, activation='relu'),
-        #tf.keras.layers.Dropout(0.2),
-        #tf.keras.layers.Dense(1024, activation='relu'),
-        #tf.keras.layers.Dropout(0.1),
-        tf.keras.layers.Dense(256, activation='relu'),
-        tf.keras.layers.Dropout(0.05),
-        tf.keras.layers.Dense(128, activation='relu'),
-        tf.keras.layers.Dropout(0.025),
-        tf.keras.layers.Dense(3)
+        tf.keras.layers.Flatten(input_shape=(sample_size, sample_size)),
+
+        tf.keras.layers.Dense(1024, activation='relu'),
+        tf.keras.layers.Dropout(0.25),
+
+        tf.keras.layers.Dense(512, activation='relu'),
+        tf.keras.layers.Dropout(0.5),
+
+        tf.keras.layers.Dense(len(class_labels))
     ])
 
-    loss_fn = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True)
+    loss_fn = tf.keras.losses.SparseCategoricalCrossentropy(from_logits = True)
     model.compile(
         optimizer='adam',
         loss=loss_fn,
         metrics=['accuracy']
         )
-    model.fit(x_train, y_train, epochs=5)
-    model.evaluate(x_test,  y_test, verbose=2)
+    model.fit(x_train, y_train, epochs = int(config['architecture']['epochs']))
+    model.evaluate(x_test,  y_test, verbose = 2)
     probability_model = tf.keras.Sequential([model, tf.keras.layers.Softmax()])
-
-    print(model(x_train[:5]).numpy())
-    print(probability_model(x_train[:5]).numpy())
 
     # Trying the inference
     fnames = [
@@ -126,7 +119,7 @@ def main():
         confidence = np.max(predictions)
         predicted_class_id = np.argmax(predictions)
         print(predictions)
-        print(f"Prediction: {fname} is an image depicting: { class_labels[predicted_class_id]}, with {(confidence*100.0):2.2f}% confidence")
+        print(f"{fname} is an image depicting: { class_labels[predicted_class_id]}, with {(confidence*100.0):2.2f}% confidence")
 
 if __name__ == "__main__":
     main()
