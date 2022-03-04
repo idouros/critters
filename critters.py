@@ -3,7 +3,6 @@ import os
 
 import argparse
 import configparser
-import random
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -18,8 +17,12 @@ def load_dataset(config, sample_size, split_ratio):
     training_data = config['training_data']['classes'].split(',')
 
     # Initialize the data placeholders
-    x_in = []
-    y_in = []
+    num_samples_train = [0] * len(training_data)
+    num_samples_test = [0] * len(training_data)
+    x_train = []
+    x_test = []
+    y_train = []
+    y_test = []
 
     # Load files and pre-process on the fly
     class_id = -1
@@ -27,45 +30,36 @@ def load_dataset(config, sample_size, split_ratio):
     for image_class in training_data:
         class_id += 1
         image_directory = os.listdir(data_location + '/' + image_class)
-        for image_file in image_directory:
 
+        num_samples = len(image_directory)
+        num_samples_train[class_id] = int(round(num_samples * split_ratio))
+        num_samples_test[class_id] = num_samples - num_samples_train[class_id]
+
+        image_id = -1
+        for image_file in image_directory:
             # Read
             image = np.array(plt.imread(data_location + '/' + image_class + '/' + image_file))
 
             # Resize to a standard size
             image_resized = np.array(Image.fromarray(image).resize(size=(sample_size, sample_size)))
 
-            # Add to set
-            x_in.append(image_resized)
-            y_in.append(class_id)
+            # Add to the correct set
+            image_id += 1
+            if image_id < num_samples_train[class_id]:
+                x_train.append(image_resized/255.0)
+                y_train.append(class_id)
+            else:
+                x_test.append(image_resized/255.0)
+                y_test.append(class_id)
 
-    num_input_samples = len(x_in)
-    print("Loaded " + str(num_input_samples) + " images.")
+    print("Training samples:")
+    print(num_samples_train)
+    print("Test samples:")
+    print(num_samples_test)
+    print("Total samples: " + str(sum(num_samples_train)+sum(num_samples_test)))
 
-    # Shuffle and split into training and test set
-    num_training_set_samples = int(round(num_input_samples * split_ratio))
-    num_test_set_samples = num_input_samples - num_training_set_samples
-    print(str(num_training_set_samples) + " training samples")
-    print(str(num_test_set_samples) + " test samples")
-
-    shuffled_indices = np.arange(0, num_input_samples)
-    random.shuffle(shuffled_indices)
-
-    x_train = np.zeros([num_training_set_samples, sample_size, sample_size,3], dtype=int)
-    x_test = np.zeros([num_test_set_samples, sample_size, sample_size, 3], dtype=int)
-    y_train = np.zeros([num_training_set_samples], dtype=int)
-    y_test = np.zeros([num_test_set_samples], dtype=int)
-
-    for j in range (0, num_input_samples):
-        if j < num_training_set_samples:
-            x_train[j] = x_in[shuffled_indices[j]]/255.
-            y_train[j] = y_in[shuffled_indices[j]]
-        else:
-            x_test[j-num_training_set_samples] = x_in[shuffled_indices[j]]/255.
-            y_test[j-num_training_set_samples] = y_in[shuffled_indices[j]]
-
- #   print(Y_train[:5])
-    return x_train, y_train, x_test, y_test
+    print(y_train[:5])
+    return np.array(x_train), np.array(y_train), np.array(x_test), np.array(y_test)
 
 def load_and_preprocess(image_file_name, sample_size):
     """ load and preprocess"""
@@ -97,7 +91,7 @@ def main():
         #tf.keras.layers.Dropout(0.2),
         #tf.keras.layers.Dense(1024, activation='relu'),
         #tf.keras.layers.Dropout(0.1),
-        tf.keras.layers.Dense(128, activation='relu'),
+        tf.keras.layers.Dense(256, activation='relu'),
         tf.keras.layers.Dropout(0.05),
         tf.keras.layers.Dense(128, activation='relu'),
         tf.keras.layers.Dropout(0.025),
@@ -114,9 +108,8 @@ def main():
     model.evaluate(x_test,  y_test, verbose=2)
     probability_model = tf.keras.Sequential([model, tf.keras.layers.Softmax()])
 
-#    predictions = model(X_train[:5]).numpy()
-#    print(predictions)
-#    print(tf.nn.softmax(predictions).numpy())
+    print(model(x_train[:5]).numpy())
+    print(probability_model(x_train[:5]).numpy())
 
     # Trying the inference
     fnames = [
