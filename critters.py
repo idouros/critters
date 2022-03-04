@@ -72,7 +72,7 @@ def load_and_preprocess(image_file_name, sample_size):
     image = np.array(plt.imread(image_file_name))
     image_resized = np.array(Image.fromarray(image).resize(size=(sample_size, sample_size)))
     image_norm = image_resized/255.0
-    return image_norm.astype(np.float32)
+    return image_norm
 
 def main():
     """main"""
@@ -133,11 +133,7 @@ def main():
         confidence = np.max(predictions)
         predicted_class_id = np.argmax(predictions)
         print(predictions)
-        print("Prediction: {} is an image depicting: {}, with {:2.2f}% confidence",
-            fname,
-            class_labels[predicted_class_id],
-            confidence*100.0
-            )
+        print(f"Prediction: {fname} is an image depicting: { class_labels[predicted_class_id]}, with {(confidence*100.0):2.2f}% confidence")
 
 if __name__ == "__main__":
     main()
